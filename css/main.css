@@ -1,0 +1,187 @@
+/**
+* CSS do layout padrão da urna
+* @copyright GPL Version 3 © 2017 
+* @author APP - Sindicato <contato@app.com.br>
+* @license GPL Version 3
+* 
+*/
+body{
+	background: #e8f2f7;
+}
+body,h1,h2,h3,h4,h5,h6,p,input,table,tr,th,td{
+	margin:0;
+	padding:0;
+	border-collapse: collapse;
+}
+a{
+	color:#FFF;
+	text-decoration: none;
+}
+.logo{
+	position:absolute;
+	width:70px;
+	margin-top:0px;
+	margin-left:10px;
+	z-index: 1;
+}
+.main{
+	/*margin: 40px auto 0;*/
+	display: block;
+	/*width:600px;*/
+	text-align:center;
+	background: #e8f2f7;
+	border-radius: 10px;
+	padding: 0px;
+	font-family: Tahoma;
+	color: #666;
+}
+.main h3{
+	text-transform: uppercase;
+	font-size: 30px;
+	font-weight: bold;
+	background:#358FBB;
+	/*border-radius:10px 10px 0 0;*/
+	color: #FFF;
+	padding: 10px 120px;
+}
+.main h3.error{
+	background-color:#DC1F1F ;
+	color:#FFF;
+}
+.main form{
+	padding: 30px 0;
+	display: block;
+	width:300px;
+	margin: 0 auto;
+}
+.main form .form-group{
+	text-align:left;
+	margin-bottom: 15px;
+	width:100%;
+}
+.main form .form-group label{
+	display:block;
+	width:100%;
+	font-weight: bold;
+	margin-bottom: 5px;
+}
+.main form .form-group input{
+	display:block;
+	width:100%;
+	padding:12px;
+	border: 1px dashed #A2a2a2;
+	background:#FFF;
+}
+
+.btn-group{
+	display: block;
+	width: 100%;
+}
+button,.button{
+	font-size:15px;
+	padding: 15px;
+	border:none;
+	border-radius: 10px;
+	cursor:pointer;
+	text-transform: uppercase;
+	background-color:#A2A2A2;
+}
+button:hover,.button:hover{
+	box-shadow: 0 2px 10px 0 #999;
+}
+button.success{
+	background-color:#48bf48;
+	color:#FFF;
+}
+button.error{
+	background-color:#DC1F1F ;
+	color:#FFF;
+}
+button.warn{
+	background-color:#EDC63B ;
+	color:#b72c2c;
+}
+button.info,.button.info{
+	background-color:#3dceff ;
+	color:#1a4f60;
+}
+.btn-small{
+	padding:5px;
+	font-size:9px;
+}
+.btn-finalizar{
+	position:absolute;
+	top:10px;
+	right:10px;
+	padding:5px;
+	font-size:10px;
+	background:#DC1F1F;
+	z-index: 2;
+}
+
+.tabela-eleitores{
+	width:100%;
+	padding: 20px;
+}
+.tabela-eleitores td{
+	padding: 10px 5px;
+}
+.tabela-eleitores tbody tr:hover{
+	background: #FFF;
+}
+ul{
+	text-align: left;
+	list-style: square;
+}
+#formVotar .form-group{
+	text-align:center;
+}
+.main form .form-group input[maxlength='1']{
+	margin: 0 auto;
+	margin-top:15px;
+	display: inline-block;
+	width:30px;
+	font-size: 30px;
+	font-weight:bold;
+	padding:5px;
+	text-align: center;
+}
+
+.codigo-confirmacao{
+	text-transform: uppercase;
+	background:#ABF;
+	color:#FFF;
+	font-size:30px;
+	padding: 15px 40px;
+	border: 1px dashed blue;
+	border-radius: 20px;
+	margin: 25px 0;
+	font-weight: bold;
+	display:inline-block;
+}
+h3.urna-finalizada{
+	background-color:#DC1F1F ;
+}
+p{
+	margin: 10px 0;
+}
+
+.helper{
+	display:block;
+	border-left:2px solid black;
+	margin: 10px 0;
+	font-size: 12px;
+	padding: 10px;
+	font-weight: bold;
+	border-radius: 0 10px 10px 0;
+}
+.helper.helper-danger{
+	border-color:#DC1F1F;
+	background: #fcbaba;
+	color:#DC1F1F;
+}
+.helper.helper-info{
+	border-color:#1a4f60;
+	background: #3dceff;
+	color:#1a4f60;
+}

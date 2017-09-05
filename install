@@ -1,0 +1,437 @@
+#!/bin/bash
+
+##
+# Cores default que serão utilizadas
+RED='\033[1;31m'
+ABORT='\033[0;31m'
+YELLOW='\033[1;33m'
+GREEN='\033[0;32m'
+NC='\033[0m'
+
+##
+# Variáveis de escopo global
+target_default=""
+ask=1
+path="0"
+urnas=""
+total_urnas=0
+server_url="http://localhost/appsindicato/api"
+deviceid="0"
+globalmd5="0"
+
+download_database(){
+	curl -o baseUrna.sqlite "$server_url/configure/database"
+	if [ $? == 0 ]; then
+		echo -e "${GREEN}[OK] Banco de dados atualizado${NC}"
+		return 1
+	else
+		echo -e "${ABORT}[ERROR] Erro ao atualizar banco de dados${NC}"
+		exit
+	fi
+}
+
+##
+# Requisita uma chave publica que será utilizada pelo sistema de urna
+# 
+# @param $1 Número identificador da urna no sistema (ID)
+# @param $2 Diretório raiz do destino (device) que será instalado
+# 
+# @return int 0 quando não for possível gerar uma chave | 1 quando chave gerada com sucesso
+get_key(){
+	curl "$server_url/configure/urna/$1" > "$2/var/www/html/urna/pub.key"
+	if [ $? == 0 ]; then
+		echo -e "${GREEN}[OK] Chave publica gerada com sucesso${NC}"
+		return 1
+	else
+		echo -e "${RED}[ERROR] Erro ao gerar chave publica${NC}"
+		return 0
+	fi
+}
+
+##
+# Requisita as configurações do servidor remoto
+# 
+get_config(){
+	remote_configs=$(curl "$server_url/configure")
+	if [ $? == 0 ]; then
+		globalmd5=$(echo $remote_configs | jq -r '.md5')
+		if [ $? != 0 ]; then
+			echo -e "${ABORT}[FAIL] Erro ao obter configurações globais do sistema!!! ABORTANDO${NC}"
+			exit
+		fi
+		deviceid=$(echo $remote_configs | jq -r '.device_id')
+		if [ $? != 0 ]; then
+			echo -e "${ABORT}[FAIL] Erro ao obter configurações globais do sistema!!! ABORTANDO${NC}"
+			exit
+		fi
+	else
+		echo -e "${ABORT}[FAIL] Erro ao obter configurações globais do sistema!!! ABORTANDO${NC}"
+		exit
+	fi
+	
+}
+
+#baixar base de dados e converter p/ sqlite
+#
+
+
+## 
+# Cria arquivo de verificação para a urna em questão
+#  
+# @param $1 md5 do sistema
+# @param $2 Diretório raiz do destino (device) que será instalado
+md5_so(){
+	echo "$1" > "$2/etc/syskey"
+	return 1
+} 
+
+## 
+# Cria arquivo de configuração para a urna em questão
+#  
+# @param $1 ID da urna
+# @param $2 Diretório raiz do destino (device) que será instalado
+config_file(){
+	echo '{ "urna" : '$1'}' > "$2/var/www/html/urna/config.ini"
+	return 1
+} 
+
+
+##
+# Verifica se o sistema de arquivos existe ou não em um determinado caminho. Caso o sistema de arquivos seja encontrado
+# armazena o caminho na variavel global $path
+#  
+# @return int 0 quando sistema de arquivos não for encontrado | 1 quando sistema de arquivos for encontrado
+local_system_exists(){
+	echo 'Buscando sistema local...'
+	echo ''
+	if [ $path != "0" ]; then
+		if [ -d "$path" ]; then
+			return 1
+		else
+			echo -e "${RED}[ERROR] Sistema de urna não encontrado em $path ${NC}"
+		fi
+	fi
+	echo 'Buscando em caminhos padrões...'
+	echo ''
+	if [ -d "/var/www/html/urna" ]; then
+		path="/var/www/html/urna"
+		return 1
+	else
+		echo -e "${RED}[ERROR] Sistema de urna não encontrado em /var/www/html/urna ${NC}"
+	fi
+	if [ -d "/home/urna" ]; then
+		path="/home/urna"
+		return 1
+	else
+		echo -e "${RED}[ERROR] Sistema de urna não encontrado em /home/urna${NC}"
+	fi
+	if [ -d "/tmp/urna" ]; then
+		path="/tmp/urna"
+		return 1
+	else
+		echo -e "${RED}[ERROR] Sistema de urna não encontrado em /tmp/urna${NC}"
+	fi
+	echo -e "${RED}[ERROR] Sistema de urna não encontrado nos caminhos padrões, por favor, insira manualmente o caminho${NC}"
+	read path
+	if [ -d $path ]; then
+		return 1
+	else
+		echo -e "${ABORT}[FAIL] Sistema de urna não encontrado!!! ABORTANDO${NC}"
+		exit
+	fi
+}
+
+##
+# Faz download do sistema de arquivos remoto através do repositório padrão. Cria um diretório local que
+# será utilizado para instalação
+# 
+# @return int 0 quando um erro ocorrer | 1 quando o download ocorrer sem erros e o sistema baixado
+# for válido
+download_system(){
+	path="/tmp/urna"
+	if [ -d "$path" ]; then
+		rm -rf $path/
+		if [ $? -eq 0 ]; then
+			git clone https://usuario:senha@github.com/appsindicato/APP-Sindicado-Eleicoes.git $path
+		else
+			echo -e "${ABORT}[FAIL] Impossível limpar diretorio temporário $path. ABORTANDO${NC}"
+			return 0
+		fi
+
+	else
+		mkdir -p $path
+		if [ $? -eq 0 ]; then
+			git clone https://usuario:senha@github.com/appsindicato/APP-Sindicado-Eleicoes.git $path
+		else
+			echo -e "${ABORT}[FAIL] Impossível criar diretorio temporário $path. ABORTANDO${NC}"
+			return 0
+		fi
+	fi
+	validate_system $path 1
+}
+
+##
+# Verifica se o sistema de arquivos destino é válido ou não. Utiliza um md5 do sistema de arquivos para validar,
+# uma busca via API é realizada para saber se o md5 do sistema de arquivo local é igual ao que o sistema possui.
+# 
+# @param $1 Caminho do sistema que será validado
+# @param $2 Define se irá tentar criar o sistema de arquivo ou não, em caso de erro
+# 
+# @return int 0 quando sistema inválido | 1 quando sistema válido
+validate_system(){
+	md5=$(find $1 -name "*.php" -type f -exec md5sum {} \;  | sort -k 2 | cut -d" " -f1 | md5sum | cut -d" " -f1)
+	if [ "$md5" = "$globalmd5" ]; then
+		echo -e "${GREEN}[OK] Sistema de arquivos válido${NC}"
+	else
+		echo -e "${RED}[ERROR] Sistema de arquivos inválido em $1 ${NC}"
+		if [ $2 == 0 ]; then
+			echo 'Gostaria de refazer o sistema de arquivos local? [y/n]'
+			if [ "$ask" == 1 ]; then
+				read option
+			else
+				option="y"
+			fi
+			if [ "$option" = "y" ]; then
+				download_system
+				return $?
+			else
+				return 0
+			fi
+		else
+			return 0
+		fi
+	fi
+	return 1
+}
+
+##
+# Verifica se existe um dispositivo (device) válido no computador local. Caso exista verifica se o 
+# diretório destino existe e realiza instalação do sistema. Irá solicitar o ID da urna caso não tenha
+# sido passado por argumento no inicio do programa (--urnas).
+# 
+# @param $1 Nome do device que está montado
+# @param $2 Qual urna será gerada, caso este argumento seja 0, irá solicitar o ID da urna manualmente
+# 
+# @return int 0 quando ocorrer erro ao gerar sistema | 1 quando sistema gerado com sucesso
+find_copy_target(){
+	target=$(mount | grep '^/dev' | grep $1 | cut -d" " -f3)
+	if [ -z $target ]; then
+		echo -e "${RED}[ERROR] Não foi possível encontrar dispositivo identificado por $1 ${NC}"
+	else
+		if [ -d $target ]; then
+			echo -e "${GREEN}[OK] Sistema de arquivos encontrado em: $target ${NC}"
+		else
+			echo -e "${RED}[ERROR] Não foi possível encontrar sistema de arquivos em: $target ${NC}"
+			echo 'Qual o destino para o dispositivo que irá conter o sistema?'
+			if [ -z $target_default ]; then
+				read target
+			else
+				target=$target_default
+			fi
+			if [ -d $target ]; then
+				echo -e "${GREEN}[OK] Dispositivo encontrado $target ${NC}"
+				if [ -d "$target/var/www/html/" ]; then
+					echo -e "${GREEN}[OK] Diretório para instalação encontrado${NC}"
+				else
+					echo -e "${RED}[ERROR] Diretório para instalação não encontrado${NC}"
+					echo "Criando diretório..."
+					mkdir -p "$target/var/www/html"
+					if [ $? -eq 0 ]; then
+						echo -e "${GREEN}[OK] Sistema de arquivos criado em $target/var/www/html ${NC}"
+					else
+						echo -e "${ABORT}[FAIL] Impossível criar sistema de arquivos em $target/var/www/html ABORTANDO!!!${NC}"
+						exit
+					fi
+				fi
+			else
+				echo -e "${ABORT}[FAIL] Não foi possível encontrar sistema de arquivos em: $target ABORTANDO!!!${NC}"
+				exit
+			fi
+		fi
+
+		if test "$(ls -A "$target/var/www/html")"; then
+			echo "Já existem arquivos no destino. Apagando arquivos..."
+			rm -rf "$target/var/www/html/urna"
+			if [ $? -eq 0 ]; then
+				echo "Sincronizando arquivos..."
+				rsync -a --chmod=700 --chown=www-data:www-data "$path" "$target/var/www/html"
+				cp "baseUrna.sqlite" "$target/var/www/html/urna/"		
+			else
+				echo -e "${ABORT}[FAIL] Erro ao apagar arquivos do sistema atual, por favor apague manualmente rm -rf $target/var/www/html${NC}"
+				exit
+			fi
+		else
+			echo "Sincronizando arquivos..."
+			rsync -a --chmod=700 --chown=www-data:www-data "$path" "$target/var/www/html"
+			cp "baseUrna.sqlite" "$target/var/www/html/urna/"
+		fi
+		validate_system "$target/var/www/html/urna" 1
+		if [ $? == 1 ]; then
+			if [ $2 == 0 ]; then
+				echo "Qual o ID da urna ?"
+				read idurna
+				if [ $idurna -gt 0 ]; then
+					get_key $idurna "$target"
+					if [ $? == 1 ]; then
+						md5=$(find $path -name "*.php" -type f -exec md5sum {} \;  | sort -k 2 | cut -d" " -f1 | md5sum | cut -d" " -f1)
+						md5_so $md5 $target
+						config_file $idurna $target
+						return $?
+					else
+						return 0
+					fi
+				else
+					return 0
+				fi
+			else
+				get_key $2 "$target"
+				return $?
+			fi
+		else
+			return 0
+		fi
+	fi
+}
+
+
+##
+# Verifica dependencias do sistema e aborta caso alguma dependencia não seja encontrada
+# 
+# @param $1 Dependencia que irá buscar
+verify_dependencies(){
+	COMMAND=$1
+
+	if hash $COMMAND 2>/dev/null; then
+		echo -e "${GREEN}[OK] $COMMAND ${NC}"
+	else
+		echo -e "${ABORT}[FAIL] $COMMAND não encontrado: Tente 'apt-get install $COMMAND' ${NC}"
+		exit
+	fi
+
+}
+
+##
+# Faz o parse das opções passadas via linha de comando
+# 
+# @param $1 Argumentos passados via linha de comando
+parse_options(){
+	for i in "$1"
+	do
+	case $i in
+	    -y|--yes)
+			# não pedir por confirmações
+	    	ask=0
+	    shift 
+	    ;;
+	    -l=*|--link=*)
+	    	server_url="${i#*=}"
+	    shift 
+	    ;;
+	    -t=*|--target=*)
+	    	target_default="${i#*=}"
+	    shift 
+	    ;;
+	    -s=*|--source=*)
+	    	path="${i#*=}"
+	    shift 
+	    ;;
+	    -u=*|--urnas=*)
+			j=0
+			for i in $(echo ${i#*=} | sed "s/,/ /g")
+			do
+				urnas[$j]=$i
+				j=$j+1
+			done
+			total_urnas=$j
+	    shift 
+	    ;;
+	    --help)
+	    	echo "Uso: install [options] [-y]"
+	    	echo "	-y | --yes                                Responde todas as perguntas com YES"
+	    	echo "	-l | --link [=url]                        Define a URL que será utilizada para gerar chaves e encontrar dados do sistema (não utilizar / no final)"
+	    	echo "	-t | --target [=diretorio]                Define o diretório raiz onde será instalado o sistema"
+	    	echo "	-s | --source [=diretorio]                Define o diretório raiz onde onde existe uma cópia atual do sistema, caso a cópia não seja válida, cria-se o diretório"
+	    	echo "	-u | --urnas [=urna1,urna2,urna3]         Define quais as urnas que serão criadas"
+	    	echo "	--help                                    Este menu"
+	   		exit
+	    shift 
+	    ;;
+	    *)
+	    	# opção inválida
+	    ;;
+	esac
+	done
+}
+
+
+parse_options "$@"
+clear
+echo "Iniciando replicação"
+echo ''
+echo 'Verificando dependencias:'
+verify_dependencies git
+verify_dependencies mount
+verify_dependencies find
+verify_dependencies rsync
+verify_dependencies md5sum
+verify_dependencies jq
+verify_dependencies curl
+get_config
+device=$deviceid
+
+local_system_exists
+echo "Sistema encontrado em $path"
+validate_system $path 0
+valid=$?
+if [ "$valid" == 0 ]; then
+	echo -e "${ABORT}[FAIL] Abortando, impossível continuar com sistema de arquivos inválido${NC}"
+	exit
+else
+	download_database
+	if [ $total_urnas == 0 ]; then
+		clone="y"
+		while [ $clone = "y" ]; do
+			find_copy_target "$device" 0 
+			sys=$?
+			if [ "$sys" == 1 ]; then
+				echo -e "${GREEN}[OK] Instalação executada com sucesso!${NC}"
+				echo 'Gostaria de instalar em outro dispositivo? [y/n]'
+				if [ "$ask" == 1 ]; then
+					read clone
+				else
+					clone="y"
+				fi
+				if [ $clone = "y" ]; then
+					echo -e "${YELLOW}Por favor, insira o novo dispositivo e assegure-se que ele esta montado. [PRESSIONE ENTER QUANDO PRONTO]${NC}"
+					read
+				fi
+			else
+				echo -e "${RED}[ERROR] Erro ao executar instalação!${NC}"
+				echo 'Gostaria de tentar novamente? [y/n]'
+				read clone
+			fi
+		done
+	else
+		for i in "${urnas[@]}"
+		do
+			clone="y"
+			while [ $clone = "y" ]; do
+				echo -e "${YELLOW}[ Urna $i ]${NC}"
+				find_copy_target "$device" $i
+				sys=$?
+				if [ "$sys" == 1 ]; then
+					echo -e "${GREEN}[ Urna $i ][OK] Instalação executada com sucesso!${NC}"
+					echo -e "${YELLOW}[ Urna $i ]Por favor, insira o novo dispositivo e assegure-se que ele esta montado. [PRESSIONE ENTER QUANDO PRONTO]${NC}"
+					read
+					clone='n'
+					clear
+				else
+					echo -e "${RED}[ Urna $i ][ERROR] Erro ao executar instalação!${NC}"
+					echo "[ Urna $i ]Gostaria de tentar novamente? [y/n]"
+					read clone
+				fi
+			done
+		done
+	fi
+fi
+echo -e "FIM"
