@@ -397,6 +397,11 @@ else
 			find_copy_target "$device" 0 
 			sys=$?
 			if [ "$sys" == 1 ]; then
+                                hdevice=$(mount | grep '^/dev' | grep $1 | cut -d" " -f1|sed 's/[0-9]*//g')
+                                umount ${hdevice}1
+                                sync
+                                sync
+                                eject $hdevice
 				echo -e "${GREEN}[OK] Instalação executada com sucesso!${NC}"
 				echo 'Gostaria de instalar em outro dispositivo? [y/n]'
 				if [ "$ask" == 1 ]; then
