@@ -218,6 +218,8 @@ find_copy_target(){
 	if [ -z $target ]; then
 		echo -e "${RED}[ERROR] Não foi possível encontrar dispositivo identificado por $1 ${NC}"
 	else
+                hdevice=$(mount | grep '^/dev' | grep 85ddb6c6-a6fd-4ad2-a75c-332d6cf35eb6 | cut -d" " -f1|sed 's/[0-9]*//g')
+                parted /dev/sdc set 1 boot on
 		if [ -d $target ]; then
 			echo -e "${GREEN}[OK] Sistema de arquivos encontrado em: $target ${NC}"
 		else
@@ -376,6 +378,7 @@ verify_dependencies rsync
 verify_dependencies md5sum
 verify_dependencies jq
 verify_dependencies curl
+verify_dependencies parted
 get_config
 device=$deviceid
 
